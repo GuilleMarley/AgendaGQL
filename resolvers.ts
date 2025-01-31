@@ -1,42 +1,41 @@
-import { APIPhone, APITime, ContactModel } from "./types.ts"
-import { Collection, ObjectId } from "mongodb"
+import { APIPhone, APITime, ContactModel } from "./types.ts";
+import { Collection, ObjectId } from "mongodb";
 import { GraphQLError } from "graphql";
 
 type GetContactQueryArgs = {
-  id: string
-}
+  id: string;
+};
 
 type DeleteContactMutationArgs = {
   id: string;
-}
+};
 
 type AddContactMutationArgs = {
-  name: string,
-  phone: string,
-}
+  name: string;
+  phone: string;
+};
 
 type UpdateContactMutationArgs = {
-  id: string,
-  name?: string,
-  phone?: string,
-}
+  id: string;
+  name?: string;
+  phone?: string;
+};
 
 type Context = {
-  ContactsCollection: Collection<ContactModel>
-}
+  ContactsCollection: Collection<ContactModel>;
+};
 
 export const resolvers = {
   Query: {
     getContact: async (_: unknown, args: GetContactQueryArgs, ctx: Context): Promise<ContactModel | null> => {
       return await ctx.ContactsCollection.findOne({ _id: new ObjectId(args.id) });
     },
-    getContacts: async (_: unknown, __: unknown, ctx: Context): Promise<ContactModel[]> => await ctx.ContactsCollection.find().toArray()
-
+    getContacts: async (_: unknown, __: unknown, ctx: Context): Promise<ContactModel[]> => await ctx.ContactsCollection.find().toArray(),
   },
 
   Mutation: {
     deleteContact: async (_: unknown, args: DeleteContactMutationArgs, ctx: Context): Promise<boolean> => {
-      const { deletedCount } = await ctx.ContactsCollection.deleteOne({ _id: new Object(args.id) });
+      const { deletedCount } = await ctx.ContactsCollection.deleteOne({ _id: new ObjectId(args.id) });
       return deletedCount === 1;
     },
     addContact: async (_: unknown, args: AddContactMutationArgs, ctx: Context): Promise<ContactModel> => {
@@ -48,18 +47,14 @@ export const resolvers = {
       if (phoneExist >= 1) throw new GraphQLError("Phone exists");
 
       const url = `https://api.api-ninjas.com/v1/validatephone?number=${phone}`;
-      const data = await fetch(url,
-        {
-          headers: {
-            "X-Api-Key": API_KEY
-          }
-        }
-      );
+      const data = await fetch(url, {
+        headers: {
+          "X-Api-Key": API_KEY,
+        },
+      });
       if (data.status !== 200) throw new GraphQLError("API Ninja Error");
 
       const response: APIPhone = await data.json();
-
-      if (!response.is_valid) throw new GraphQLError("Not valid phone format")
       const country = response.country;
       const timezone = response.timezones[0];
 
@@ -68,7 +63,7 @@ export const resolvers = {
         phone,
         country,
         timezone,
-      })
+      });
 
       return {
         _id: insertedId,
@@ -76,7 +71,7 @@ export const resolvers = {
         phone,
         country,
         timezone,
-      }
+      };
     },
     updateContact: async (_: unknown, args: UpdateContactMutationArgs, ctx: Context): Promise<ContactModel> => {
       const API_KEY = Deno.env.get("API_KEY");
@@ -88,11 +83,14 @@ export const resolvers = {
       }
 
       if (!phone) {
-        const newUser = await ctx.ContactsCollection.findOneAndUpdate({
-          _id: new ObjectId(id)
-        }, {
-          $set: { name }
-        });
+        const newUser = await ctx.ContactsCollection.findOneAndUpdate(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: { name },
+          }
+        );
         if (!newUser) throw new GraphQLError("User not found!");
         return newUser;
       }
@@ -101,42 +99,48 @@ export const resolvers = {
       if (phoneExists && phoneExists._id.toString() !== id) throw new GraphQLError("Phone already taken by Diego");
 
       if (phoneExists) {
-        const newUser = await ctx.ContactsCollection.findOneAndUpdate({
-          _id: new ObjectId(id)
-        }, {
-          $set: { name: name || phoneExists.name }
-        });
+        const newUser = await ctx.ContactsCollection.findOneAndUpdate(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: { name: name || phoneExists.name },
+          }
+        );
         if (!newUser) throw new GraphQLError("User not found!");
         return newUser;
       }
 
       const url = `https://api.api-ninjas.com/v1/validatephone?number=${phone}`;
-      const data = await fetch(url,
-        {
-          headers: {
-            "X-Api-Key": API_KEY
-          }
-        }
-      );
+      const data = await fetch(url, {
+        headers: {
+          "X-Api-Key": API_KEY,
+        },
+      });
       if (data.status !== 200) throw new GraphQLError("API Ninja Error");
 
       const response: APIPhone = await data.json();
 
-      if (!response.is_valid) throw new GraphQLError("Not valid phone format")
+      if (!response.is_valid) throw new GraphQLError("Not valid phone format");
 
       const country = response.country;
       const timezone = response.timezones[0];
 
-      const newUser = await ctx.ContactsCollection.findOneAndUpdate({
-        _id: new ObjectId(id)
-      }, {
-        name,
-        phone,
-        country,
-        timezone,
-      })
+      const newUser = await ctx.ContactsCollection.findOneAndUpdate(
+        {
+          _id: new ObjectId(id),
+        },
+        {
+          $set: {
+            name,
+            phone,
+            country,
+            timezone,
+          },
+        }
+      );
       return newUser;
-    }
+    },
   },
 
   Contact: {
@@ -147,18 +151,15 @@ export const resolvers = {
 
       const timezone = parent.timezone;
       const url = `https://api.api-ninjas.com/v1/worldtime?timezone=${timezone}`;
-
-      const data = await fetch(url,
-        {
-          headers: {
-            "X-Api-Key": API_KEY
-          }
-        }
-      );
+      const data = await fetch(url, {
+        headers: {
+          "X-Api-Key": API_KEY,
+        },
+      });
       if (data.status !== 200) throw new GraphQLError("API NINJA ERROR");
 
       const response: APITime = await data.json();
       return response.datetime;
-    }
-  }
-}
+    },
+  },
+};  
