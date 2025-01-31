@@ -13,12 +13,14 @@ type DeleteContactMutationArgs = {
 type AddContactMutationArgs = {
   name: string;
   phone: string;
+  friends?: string[];
 };
 
 type UpdateContactMutationArgs = {
   id: string;
   name?: string;
   phone?: string;
+  friends?: string[];
 };
 
 type Context = {
@@ -42,7 +44,7 @@ export const resolvers = {
       const API_KEY = Deno.env.get("API_KEY");
       if (!API_KEY) throw new GraphQLError("You need the Api Ninja API_KEY");
 
-      const { phone, name } = args;
+      const { phone, name, friends } = args;
       const phoneExist = await ctx.ContactsCollection.countDocuments({ phone });
       if (phoneExist >= 1) throw new GraphQLError("Phone exists");
 
@@ -63,6 +65,7 @@ export const resolvers = {
         phone,
         country,
         timezone,
+        friends: friends ? friends.map((id) => new ObjectId(id)) : [],
       });
 
       return {
@@ -71,80 +74,55 @@ export const resolvers = {
         phone,
         country,
         timezone,
+        friends: friends ? friends.map((id) => new ObjectId(id)) : [],
       };
     },
     updateContact: async (_: unknown, args: UpdateContactMutationArgs, ctx: Context): Promise<ContactModel> => {
       const API_KEY = Deno.env.get("API_KEY");
       if (!API_KEY) throw new GraphQLError("You need the Api Ninja API_KEY");
 
-      const { id, phone, name } = args;
-      if (!phone && !name) {
+      const { id, phone, name, friends } = args;
+      if (!phone && !name && !friends) {
         throw new GraphQLError("You must at least update one value");
       }
 
-      if (!phone) {
-        const newUser = await ctx.ContactsCollection.findOneAndUpdate(
-          {
-            _id: new ObjectId(id),
+      const updateData: Partial<ContactModel> = {};
+      if (name) updateData.name = name;
+      if (friends) updateData.friends = friends.map((id) => new ObjectId(id));
+
+      if (phone) {
+        const phoneExists = await ctx.ContactsCollection.findOne({ phone });
+        if (phoneExists && phoneExists._id.toString() !== id) throw new GraphQLError("Phone already taken");
+
+        const url = `https://api.api-ninjas.com/v1/validatephone?number=${phone}`;
+        const data = await fetch(url, {
+          headers: {
+            "X-Api-Key": API_KEY,
           },
-          {
-            $set: { name },
-          }
-        );
-        if (!newUser) throw new GraphQLError("User not found!");
-        return newUser;
+        });
+        if (data.status !== 200) throw new GraphQLError("API Ninja Error");
+
+        const response: APIPhone = await data.json();
+        if (!response.is_valid) throw new GraphQLError("Not valid phone format");
+
+        updateData.phone = phone;
+        updateData.country = response.country;
+        updateData.timezone = response.timezones[0];
       }
 
-      const phoneExists = await ctx.ContactsCollection.findOne({ phone });
-      if (phoneExists && phoneExists._id.toString() !== id) throw new GraphQLError("Phone already taken by Diego");
-
-      if (phoneExists) {
-        const newUser = await ctx.ContactsCollection.findOneAndUpdate(
-          {
-            _id: new ObjectId(id),
-          },
-          {
-            $set: { name: name || phoneExists.name },
-          }
-        );
-        if (!newUser) throw new GraphQLError("User not found!");
-        return newUser;
-      }
-
-      const url = `https://api.api-ninjas.com/v1/validatephone?number=${phone}`;
-      const data = await fetch(url, {
-        headers: {
-          "X-Api-Key": API_KEY,
-        },
-      });
-      if (data.status !== 200) throw new GraphQLError("API Ninja Error");
-
-      const response: APIPhone = await data.json();
-
-      if (!response.is_valid) throw new GraphQLError("Not valid phone format");
-
-      const country = response.country;
-      const timezone = response.timezones[0];
-
-      const newUser = await ctx.ContactsCollection.findOneAndUpdate(
-        {
-          _id: new ObjectId(id),
-        },
-        {
-          $set: {
-            name,
-            phone,
-            country,
-            timezone,
-          },
-        }
+      const { value: updatedContact } = await ctx.ContactsCollection.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: updateData },
+        { returnDocument: "after" }
       );
-      return newUser;
+
+      if (!updatedContact) throw new GraphQLError("User not found!");
+      return updatedContact;
     },
   },
 
   Contact: {
-    id: (parent: ContactModel): string => parent._id!.toString(),
+    id: (parent: ContactModel): string => parent._id?.toString(),
     time: async (parent: ContactModel): Promise<string> => {
       const API_KEY = Deno.env.get("API_KEY");
       if (!API_KEY) throw new GraphQLError("You need the Api Ninja API_KEY");
@@ -161,5 +139,12 @@ export const resolvers = {
       const response: APITime = await data.json();
       return response.datetime;
     },
+    friends: async (parent: ContactModel, _: unknown, ctx: Context) => {
+      if (!Array.isArray(parent.friends)) {
+        return [];
+      }
+      const ids = parent.friends.map((id) => new ObjectId(id));
+      return await ctx.ContactsCollection.find({ _id: { $in: ids } }).toArray();
+    },
   },
-};  
+};

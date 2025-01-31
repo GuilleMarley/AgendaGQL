@@ -5,6 +5,7 @@ export const schema = `#graphql
         phone: String!
         country: String!
         time: String!
+        friends: [Contact!]!
     }
 
     type Query{
@@ -13,7 +14,7 @@ export const schema = `#graphql
     }
 
     type Mutation{
-        addContact(name: String!, phone: String!):Contact!
+        addContact(name: String!, phone: String!, friends: [ID!]!):Contact!
         deleteContact(id: ID!):Boolean!
         updateContact(id: ID!, name: String, phone: String):Contact!
     }

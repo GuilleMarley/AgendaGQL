@@ -1,10 +1,11 @@
-import {OptionalId} from "mongodb"
+import {ObjectId, OptionalId} from "mongodb"
 
 export type ContactModel = OptionalId<{
   name: string,
   phone: string,
   country: string,
   timezone: string,
+  friends: ObjectId[],
 }>;
 
 // https://api.api-ninjas.com/v1/validatephone?number=+12065550100
